@@ -1,0 +1,38 @@
+# ===== 拾音流配置 =====
+# 复制为 config/app.yaml 后按需修改；容器内路径 /app/config/app.yaml
+
+# 轮询间隔（分钟），默认 30
+poll_interval_minutes: 30
+
+# 单条视频处理失败的最大重试次数
+max_attempts: 3
+
+# 上传成功后是否保留下载的临时视频文件（data/tmp/）
+keep_video: false
+
+douyin:
+  # 监控的博主列表：name 随意，url 填抖音 App「分享->复制链接」得到的主页链接
+  # （形如 https://www.douyin.com/user/MS4wLjABAAAA....）
+  accounts:
+    - name: 示例博主
+      url: https://www.douyin.com/user/MS4wLjABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+  # 可选：填入浏览器登录抖音后的 Cookie 可提高接口限额（游客模式通常够用）
+  cookie: ""
+
+  # 每次轮询最多取多少条作品（第一页足够覆盖增量）
+  max_posts_per_poll: 20
+
+audio:
+  format: mp3      # mp3 / m4a / aac
+  bitrate: 192k    # 128k / 192k / 320k
+
+ximalaya:
+  # 喜马拉雅专辑 ID：创作中心 -> 专辑管理，浏览器地址栏 sound/manage/<这串数字>
+  album_id: "12345678"
+
+  # 上传后节目可见范围：public=公开，private=仅自己可见
+  visibility: public
+
+  # 等待上传/转码完成的超时（秒）
+  upload_timeout_seconds: 600

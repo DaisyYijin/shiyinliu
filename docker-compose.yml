@@ -1,0 +1,17 @@
+services:
+  shiyinliu:
+    # 方式一（推荐）：GitHub Actions 自动构建的镜像，直接拉取（推送后替换 <owner>/<repo>）
+    # image: ghcr.io/<owner>/<repo>:latest
+    # 方式二：本地构建
+    build: .
+    image: shiyinliu:local
+    container_name: shiyinliu
+    restart: unless-stopped
+    ports:
+      - "8300:8300"
+    environment:
+      TZ: Asia/Shanghai
+    volumes:
+      - ./config:/app/config    # app.yaml 配置
+      - ./data:/app/data        # 状态库 / 登录态 / 排查截图
+      - ./media:/app/media      # 产出音频归档
