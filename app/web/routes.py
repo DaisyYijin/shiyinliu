@@ -138,6 +138,19 @@ async def douyin_login_start(request: Request):
     return ctx.douyin_login_session.status()
 
 
+class VerifyBody(BaseModel):
+    value: str
+
+
+@router.post("/api/douyin/login/verify")
+async def douyin_login_verify(body: VerifyBody, request: Request):
+    sess = getattr(_ctx(request), "douyin_login_session", None)
+    if not sess or not sess.pending_verify:
+        raise HTTPException(409, "当前没有等待输入的验证")
+    ok = sess.submit_verify(body.value)
+    return {"ok": ok}
+
+
 @router.get("/douyin_qr.png")
 async def douyin_qr(request: Request):
     from pathlib import Path

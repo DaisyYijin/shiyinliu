@@ -74,6 +74,10 @@ class LoginSession:
     avatar: str = ""
     qr_path: str = "/login_qr.png"
     shot_path: Path | None = None
+    pending_verify: bool = False
+    verify_hint: str = ""
+    _verify_value: str = field(default="", repr=False)
+    _verify_event: Any = field(default=None, repr=False)
     _task: Any = field(default=None, repr=False)
 
     def status(self) -> dict:
@@ -83,8 +87,41 @@ class LoginSession:
             "message": self.message,
             "account": self.account or None,
             "avatar": self.avatar or None,
+            "pending_verify": self.pending_verify,
+            "verify_hint": self.verify_hint or None,
             "qr": (self.qr_path if self.shot_path and self.shot_path.exists() else None),
         }
+
+    # ---- 扫码后的二次验证（短信验证码 / 手机尾号等） ----
+    def request_verify(self, hint: str) -> None:
+        """标记需要用户输入验证信息（状态页据此显示输入框）。"""
+        self.pending_verify = True
+        self.verify_hint = hint
+        if self._verify_event is None:
+            self._verify_event = asyncio.Event()
+        else:
+            self._verify_event.clear()
+
+    async def wait_verify(self, timeout: float) -> str:
+        """阻塞等待用户提交验证值；超时返回空串。"""
+        if self._verify_event is None:
+            self._verify_event = asyncio.Event()
+        try:
+            await asyncio.wait_for(self._verify_event.wait(), timeout)
+        except asyncio.TimeoutError:
+            self.pending_verify = False
+            return ""
+        self.pending_verify = False
+        return self._verify_value
+
+    def submit_verify(self, value: str) -> bool:
+        if not self.pending_verify:
+            return False
+        self._verify_value = (value or "").strip()
+        self.pending_verify = False
+        if self._verify_event:
+            self._verify_event.set()
+        return True
 
 
 async def _shot_qr_only(page: Any, shot: Path) -> bool:

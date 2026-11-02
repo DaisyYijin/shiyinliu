@@ -46,6 +46,19 @@ QR_TAB_SELECTORS = [
     "text=扫码登录",
 ]
 
+# 扫码确认后的二次验证表单（抖音新设备登录常见：短信验证码 / 手机尾号）
+VERIFY_INPUT_SELECTORS = [
+    "input[placeholder*='手机']",
+    "input[placeholder*='验证码']",
+    "input[placeholder*='尾号']",
+]
+VERIFY_SUBMIT_SELECTORS = [
+    "button:has-text('确认')",
+    "button:has-text('验证')",
+    "button:has-text('提交')",
+    "button:has-text('登录')",
+]
+
 
 def write_douyin_auth(cfg: Config, account: str, avatar: str) -> None:
     try:
@@ -137,6 +150,25 @@ async def run_douyin_login(cfg: Config, session: LoginSession) -> None:
                 await page.wait_for_timeout(3000)
 
                 session.message = "等待扫码（二维码见状态页）"
+
+                # 扫码确认后可能出现二次验证（短信验证码/手机尾号）：
+                # 展示验证页并等待用户在状态页输入，代填提交
+                vloc, vhint = await _detect_verify_input(page)
+                if vloc is not None:
+                    session.request_verify(f"扫码已确认，需二次验证：{vhint}")
+                    await _shot(page, shot)  # 展示验证页面上下文
+                    value = await session.wait_verify(timeout=180)
+                    session.pending_verify = False
+                    if value:
+                        ok_v = await _fill_and_submit_verify(page, vloc, value)
+                        session.message = "已提交验证，等待结果…" if ok_v else (
+                            "验证提交失败，若页面仍停留请重新扫码"
+                        )
+                        await page.wait_for_timeout(3000)
+                    else:
+                        session.message = "验证输入超时，请重新扫码"
+                    continue  # 回到循环顶查 cookie
+
                 # 二维码提取：base64 直取 -> （兜底）点登录入口 -> 元素截图
                 if not await _extract_qr_base64(page, shot):
                     # 每轮都尝试点一次登录入口（面板未弹时；已弹时点击
@@ -205,6 +237,37 @@ async def _extract_qr_base64(page: Any, shot: Path) -> bool:
         shot.write_bytes(data)
         return True
     except Exception:
+        return False
+
+
+async def _detect_verify_input(page: Any) -> tuple[Any, str]:
+    """检测扫码后的二次验证表单，返回 (输入框locator, 提示) 或 (None, '')。"""
+    for sel in VERIFY_INPUT_SELECTORS:
+        try:
+            loc = page.locator(sel).first
+            if await loc.is_visible():
+                ph = await loc.get_attribute("placeholder") or sel
+                return loc, ph
+        except Exception:
+            continue
+    return None, ""
+
+
+async def _fill_and_submit_verify(page: Any, loc: Any, value: str) -> bool:
+    """把用户提交的验证值填入表单并点确认。"""
+    try:
+        await loc.fill(value)
+        for sel in VERIFY_SUBMIT_SELECTORS:
+            try:
+                btn = page.locator(sel).first
+                if await btn.is_visible():
+                    await btn.click()
+                    return True
+            except Exception:
+                continue
+        return False
+    except Exception:
+        log.warning("填写验证表单失败", exc_info=True)
         return False
 
 

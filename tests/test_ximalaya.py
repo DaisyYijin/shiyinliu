@@ -19,13 +19,44 @@ def test_login_session_status_shape(tmp_path):
     s = LoginSession()
     st = s.status()
     assert st == {"running": False, "logged_in": False, "message": "",
-                  "account": None, "avatar": None, "qr": None}
+                  "account": None, "avatar": None, "pending_verify": False,
+                  "verify_hint": None, "qr": None}
     s.shot_path = tmp_path / "qr.png"
     s.shot_path.write_bytes(b"png")
     assert s.status()["qr"] == "/login_qr.png"
     s.account, s.avatar = "某用户", "https://cdn.example.com/a.png"
     st = s.status()
     assert st["account"] == "某用户" and st["avatar"].endswith("a.png")
+
+
+@pytest.mark.asyncio
+async def test_login_session_verify_flow():
+    import asyncio
+
+    s = LoginSession()
+    s.request_verify("请输入短信验证码")
+    st = s.status()
+    assert st["pending_verify"] is True and st["verify_hint"] == "请输入短信验证码"
+
+    task = asyncio.create_task(s.wait_verify(timeout=5))
+    await asyncio.sleep(0.05)
+    assert s.submit_verify(" 123456 ") is True
+    value = await task
+    assert value == "123456"
+    assert s.status()["pending_verify"] is False
+
+
+def test_login_session_verify_reject_when_not_pending():
+    s = LoginSession()
+    assert s.submit_verify("x") is False
+
+
+@pytest.mark.asyncio
+async def test_login_session_verify_timeout():
+    s = LoginSession()
+    s.request_verify("hint")
+    assert await s.wait_verify(timeout=0.05) == ""
+    assert s.status()["pending_verify"] is False
 
 
 @pytest.mark.asyncio

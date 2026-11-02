@@ -79,6 +79,10 @@
         <button class="ghost" id="dy-login">扫码登录</button>
         <span class="login-state" id="dy-state">未检测</span>
       </div>
+      <div class="login-row" id="dy-verify" style="display:none;margin-top:8px">
+        <input type="text" id="dy-code" placeholder="输入短信验证码 / 手机尾号…">
+        <button class="mini" id="dy-code-submit">提交验证</button>
+      </div>
       <img id="dy-qr" class="qr" alt="抖音登录二维码">
     </div>
     <div class="card">
@@ -134,14 +138,20 @@ async function pollLogin(kind){
   try{
     const s = await (await fetch(api.status)).json();
     const el = $(kind+"-state"), qr = $(kind+"-qr");
+    const vf = $(kind+"-verify");
     if (s.logged_in){
       const who = s.account ? `（${esc(s.account)}）` : "";
       const av = s.avatar ? `<img src="${esc(s.avatar)}" style="width:18px;height:18px;border-radius:50%;vertical-align:-4px;margin-right:4px" onerror="this.remove()">` : "";
       el.innerHTML = `${av}已登录 ✓${who}`;
       el.className = "login-state ok";
       qr.style.display = "none";
-    } else if (s.running){ el.textContent = s.message||"等待扫码…"; el.className="login-state"; }
-    else { el.textContent = "未登录"; el.className = "login-state"; }
+      if (vf) vf.style.display = "none";
+    } else if (s.pending_verify){
+      el.textContent = s.verify_hint || "需要二次验证";
+      el.className = "login-state";
+      if (vf) vf.style.display = "flex";
+    } else if (s.running){ el.textContent = s.message||"等待扫码…"; el.className="login-state"; if (vf) vf.style.display="none"; }
+    else { el.textContent = "未登录"; el.className = "login-state"; if (vf) vf.style.display="none"; }
     if (s.running && s.qr){ qr.src = api.qr+"?t="+Date.now(); qr.style.display = "block"; }
     else if (!s.logged_in) { qr.style.display = "none"; }
   }catch(e){}
@@ -156,6 +166,23 @@ function bindLogin(kind){
     } catch(e){ $("msg").textContent = "发起失败："+e; }
     finally { $(kind+"-login").disabled = false; }
   };
+  const vbtn = $(kind+"-code-submit");
+  if (vbtn) {
+    vbtn.onclick = async () => {
+      const v = $(kind+"-code").value.trim();
+      if (!v) return;
+      vbtn.disabled = true;
+      try {
+        const r = await fetch(`/api/${kind==="dy"?"douyin/"}login/verify`, {
+          method:"POST", headers:{"Content-Type":"application/json"},
+          body: JSON.stringify({value: v})});
+        const j = await r.json().catch(()=>({detail:"未知错误"}));
+        $("msg").textContent = r.ok ? "验证已提交，等待抖音确认…" : ("提交失败："+JSON.stringify(j.detail||j));
+        pollLogin(kind);
+      } catch(e){ $("msg").textContent = "提交失败："+e; }
+      finally { vbtn.disabled = false; }
+    };
+  }
 }
 
 // ---- 监控账号管理 ----
