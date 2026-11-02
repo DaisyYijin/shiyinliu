@@ -102,7 +102,13 @@ async function pollLogin(){
   try{
     const s = await (await fetch("/api/login/status")).json();
     const el = $("login-state");
-    if (s.logged_in){ el.textContent="已登录 ✓"; el.className="login-state ok"; $("qr").style.display="none"; }
+    if (s.logged_in){
+      const who = s.account ? `（${esc(s.account)}）` : "";
+      const av = s.avatar ? `<img src="${esc(s.avatar)}" style="width:18px;height:18px;border-radius:50%;vertical-align:-4px;margin-right:4px" onerror="this.remove()">` : "";
+      el.innerHTML = `${av}已登录 ✓${who}`;
+      el.className = "login-state ok";
+      $("qr").style.display = "none";
+    }
     else if (s.running){ el.textContent=s.message||"等待扫码…"; }
     else { el.textContent="未登录"; el.className="login-state"; }
     if (s.running && s.qr){ $("qr").src=s.qr+"?t="+Date.now(); $("qr").style.display="block"; }

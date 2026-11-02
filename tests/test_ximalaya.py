@@ -18,10 +18,14 @@ def test_looks_like_login_url():
 def test_login_session_status_shape(tmp_path):
     s = LoginSession()
     st = s.status()
-    assert st == {"running": False, "logged_in": False, "message": "", "qr": None}
+    assert st == {"running": False, "logged_in": False, "message": "",
+                  "account": None, "avatar": None, "qr": None}
     s.shot_path = tmp_path / "qr.png"
     s.shot_path.write_bytes(b"png")
     assert s.status()["qr"] == "/login_qr.png"
+    s.account, s.avatar = "某用户", "https://cdn.example.com/a.png"
+    st = s.status()
+    assert st["account"] == "某用户" and st["avatar"].endswith("a.png")
 
 
 @pytest.mark.asyncio
