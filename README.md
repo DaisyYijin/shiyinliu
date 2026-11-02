@@ -22,7 +22,7 @@
 ### 1. 准备配置
 
 ```bash
-git clone https://github.com/<owner>/<repo>.git && cd <repo>
+git clone https://github.com/DaisyYijin/shiyinliu.git && cd shiyinliu
 mkdir -p config data media
 cp config/app.example.yaml config/app.yaml
 ```
@@ -40,7 +40,7 @@ cp config/app.example.yaml config/app.yaml
 docker compose up -d
 ```
 
-（首次会本地构建镜像；若直接使用 GitHub Actions 构建好的镜像，把 `docker-compose.yml` 里的 `image` 改为 `ghcr.io/<owner>/<repo>:latest` 并删掉 `build:` 行，然后 `docker compose pull && docker compose up -d`。）
+（`docker-compose.yml` 已预填 GitHub Actions 自动构建的镜像 `ghcr.io/daisyyijin/shiyinliu:latest`，直接 `docker compose pull && docker compose up -d` 即可；如需本地构建，把 `build: .` 取消注释并改回本地 tag。）
 
 ### 3. 扫码登录喜马拉雅（只需一次）
 
@@ -103,7 +103,7 @@ pip install -r requirements.txt pytest pytest-asyncio
 python -m pytest
 ```
 
-推送 `main` 分支会触发 GitHub Actions：先跑测试，通过后构建镜像推送到 `ghcr.io/<owner>/<repo>`（`latest` 与 commit sha 双标签）。
+推送 `main` 分支会触发 GitHub Actions：先跑测试，通过后构建镜像推送到 `ghcr.io/daisyyijin/shiyinliu`（`latest` 与 commit sha 双标签）。
 
 ## 声明
 

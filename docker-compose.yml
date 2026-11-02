@@ -1,10 +1,10 @@
 services:
   shiyinliu:
-    # 方式一（推荐）：GitHub Actions 自动构建的镜像，直接拉取（推送后替换 <owner>/<repo>）
-    # image: ghcr.io/<owner>/<repo>:latest
-    # 方式二：本地构建
-    build: .
-    image: shiyinliu:local
+    # GitHub Actions 自动构建并推送（main 分支触发），直接拉取即可
+    image: ghcr.io/daisyyijin/shiyinliu:latest
+    # 如需本地构建：注释掉上面的 image，取消下面两行注释
+    # build: .
+    # image: shiyinliu:local
     container_name: shiyinliu
     restart: unless-stopped
     ports:
