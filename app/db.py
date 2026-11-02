@@ -25,6 +25,13 @@ CREATE TABLE IF NOT EXISTS records (
     created_at   INTEGER NOT NULL,
     updated_at   INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS accounts (
+    sec_uid     TEXT PRIMARY KEY,
+    name        TEXT NOT NULL DEFAULT '',
+    source      TEXT NOT NULL DEFAULT 'search',
+    fetched_all INTEGER NOT NULL DEFAULT 0,
+    created_at  INTEGER NOT NULL
+);
 CREATE INDEX IF NOT EXISTS idx_records_status ON records(status);
 """
 
@@ -150,3 +157,53 @@ class Store:
 
     def set_max_attempts(self, n: int) -> None:
         self._max_attempts = max(1, int(n))
+
+    # ---- 监控账号（配置文件 + 状态页搜索添加，统一入表管理） ----------
+    def sync_config_accounts(self, accounts: list) -> None:
+        """把配置文件里的账号同步入库（source=config，不覆盖已有记录）。"""
+        now = int(time.time())
+        with self._lock, self._conn:
+            for a in accounts:
+                self._conn.execute(
+                    "INSERT OR IGNORE INTO accounts (sec_uid, name, source, created_at)"
+                    " VALUES (?,?,?,?)",
+                    (a.sec_uid, a.name, "config", now),
+                )
+
+    def list_accounts(self) -> list[dict[str, Any]]:
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT * FROM accounts ORDER BY created_at, sec_uid"
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_account(self, sec_uid: str) -> dict[str, Any] | None:
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT * FROM accounts WHERE sec_uid = ?", (sec_uid,)
+            ).fetchone()
+        return dict(row) if row else None
+
+    def upsert_account(self, sec_uid: str, name: str, source: str = "search") -> None:
+        with self._lock, self._conn:
+            self._conn.execute(
+                "INSERT INTO accounts (sec_uid, name, source, created_at)"
+                " VALUES (?,?,?,?)"
+                " ON CONFLICT(sec_uid) DO UPDATE SET name = excluded.name",
+                (sec_uid, name, source, int(time.time())),
+            )
+
+    def set_fetched_all(self, sec_uid: str, done: int = 1) -> None:
+        with self._lock, self._conn:
+            self._conn.execute(
+                "UPDATE accounts SET fetched_all = ? WHERE sec_uid = ?", (done, sec_uid)
+            )
+
+    def delete_account(self, sec_uid: str) -> bool:
+        """删除监控账号；仅允许删除状态页添加的（source=search）。"""
+        with self._lock, self._conn:
+            cur = self._conn.execute(
+                "DELETE FROM accounts WHERE sec_uid = ? AND source = 'search'",
+                (sec_uid,),
+            )
+        return cur.rowcount > 0

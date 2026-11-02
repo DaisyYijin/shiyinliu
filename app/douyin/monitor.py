@@ -5,12 +5,16 @@ filter 属性命名（jsonpath 属性随版本变动，而抖音原始结构更�
 """
 from __future__ import annotations
 
+import asyncio
 import logging
+import os
+from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
-from ..config import DEFAULT_DOUYIN_UA, Config
+from ..config import DEFAULT_DOUYIN_UA, Config, SEC_UID_RE
 
 log = logging.getLogger("douyin.monitor")
 
@@ -59,13 +63,34 @@ class F2Monitor:
                 },
                 "proxies": {"http://": None, "https://": None},
                 "timeout": 15,
-                "cookie": self.cfg.douyin.cookie or "",
+                "cookie": self._load_cookie(),
             }
             self._client = DouyinHandler(kwargs)
         return self._client
 
-    async def list_posts(self, sec_uid: str, limit: int) -> list[dict[str, Any]]:
-        """拉取博主第一页作品（监控场景第一页即可覆盖增量）。"""
+    def _load_cookie(self) -> str:
+        """优先用配置文件里的 cookie；否则用扫码登录导出的 data/douyin_cookie.txt。"""
+        if self.cfg.douyin.cookie:
+            return self.cfg.douyin.cookie
+        cookie_file = Path(self.cfg.data_dir) / "douyin_cookie.txt"
+        try:
+            if cookie_file.exists():
+                text = cookie_file.read_text(encoding="utf-8").strip()
+                if text:
+                    return text
+        except Exception:
+            log.warning("读取抖音 cookie 文件失败", exc_info=True)
+        return ""
+
+    async def list_posts(
+        self, sec_uid: str, limit: int, fetch_all: bool = False
+    ) -> list[dict[str, Any]]:
+        """拉取博主作品。
+
+        fetch_all=False：只取第一页（日常监控增量足够）；
+        fetch_all=True：沿游标翻页拉取全部作品（新添加博主的首轮存量），
+        页间停顿 1s 降低风控风险，安全上限 1000 条。
+        """
         handler = self._handler()
         posts: list[dict[str, Any]] = []
         page_counts = max(1, min(int(limit), 50))
@@ -75,10 +100,17 @@ class F2Monitor:
                 item = extract_aweme(aw)
                 if item:
                     posts.append(item)
-            break  # 只取第一页
+            if not fetch_all:
+                break
+            if len(posts) >= 1000:
+                log.warning("%s 作品超过 1000 条，截断", sec_uid[:16])
+                break
+            await asyncio.sleep(1.0)  # 翻页间隔
         posts.sort(key=lambda p: p["publish_time"], reverse=True)
-        log.info("拉取 %s 作品：%d 条（取 %d）", sec_uid[:16], len(posts), min(len(posts), limit))
-        return posts[:limit]
+        n = len(posts)
+        log.info("拉取 %s 作品：%d 条%s", sec_uid[:16], n,
+                 "（全量）" if fetch_all else f"（取 {min(n, limit)}）")
+        return posts if fetch_all else posts[:limit]
 
     async def get_post(self, aweme_id: str) -> dict[str, Any]:
         """获取单个视频详情（手动提交入口用）。"""

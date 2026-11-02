@@ -103,6 +103,20 @@ async def test_list_posts_first_page_sorted():
 
 
 @pytest.mark.asyncio
+async def test_list_posts_fetch_all_pages():
+    pages = [
+        {"aweme_list": [sample_aweme(aid=str(i)) for i in range(3)]},
+        {"aweme_list": [sample_aweme(aid=str(i)) for i in range(3, 5)]},
+    ]
+    m, _ = make_monitor(pages=pages)
+    posts = await m.list_posts("sec_uid_x", 2, fetch_all=True)
+    assert len(posts) == 5  # 全量翻页，不受 limit 限制
+    # 非全量仍只取第一页
+    m2, _ = make_monitor(pages=pages)
+    assert len(await m2.list_posts("sec_uid_x", 2)) == 2
+
+
+@pytest.mark.asyncio
 async def test_get_post_detail():
     m, h = make_monitor(detail={"aweme_detail": sample_aweme()})
     item = await m.get_post("7412345678901234567")

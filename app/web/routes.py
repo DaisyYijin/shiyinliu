@@ -90,6 +90,80 @@ async def login_qr(request: Request):
     return FileResponse(p, media_type="image/png", headers={"Cache-Control": "no-store"})
 
 
+@router.get("/api/douyin/login/status")
+async def douyin_login_status(request: Request):
+    sess = getattr(_ctx(request), "douyin_login_session", None)
+    if sess:
+        return sess.status()
+    return {"running": False, "logged_in": False, "message": "",
+            "account": None, "avatar": None, "qr": None}
+
+
+@router.post("/api/douyin/login/start")
+async def douyin_login_start(request: Request):
+    ctx = _ctx(request)
+    sess = getattr(ctx, "douyin_login_session", None)
+    if sess and sess.running:
+        return sess.status()
+    from ..douyin.login import start_douyin_login_task
+
+    ctx.douyin_login_session = start_douyin_login_task(ctx.cfg)
+    return ctx.douyin_login_session.status()
+
+
+@router.get("/douyin_qr.png")
+async def douyin_qr(request: Request):
+    from pathlib import Path
+
+    p = Path(_ctx(request).cfg.data_dir) / "douyin_qr.png"
+    if not p.exists():
+        raise HTTPException(404, "暂无二维码，请先发起抖音登录")
+    return FileResponse(p, media_type="image/png", headers={"Cache-Control": "no-store"})
+
+
+# ---- 监控账号管理（配置文件 + 状态页搜索添加） ----
+@router.get("/api/accounts")
+async def list_accounts(request: Request):
+    return {"accounts": _ctx(request).store.list_accounts()}
+
+
+@router.get("/api/accounts/search")
+async def search_accounts(request: Request, q: str):
+    ctx = _ctx(request)
+    if not (q or "").strip():
+        raise HTTPException(400, "搜索关键词为空")
+    from ..douyin.search import search_creators
+
+    results = await search_creators(ctx.cfg, q)
+    return {"results": results}
+
+
+class AccountBody(BaseModel):
+    sec_uid: str
+    name: str = ""
+
+
+@router.post("/api/accounts")
+async def add_account(body: AccountBody, request: Request):
+    ctx = _ctx(request)
+    from ..config import extract_sec_uid
+
+    sec_uid = extract_sec_uid(body.sec_uid) or body.sec_uid.strip()
+    if not sec_uid.startswith("MS4wLjABAAAA"):
+        raise HTTPException(400, "sec_uid 格式不正确")
+    ctx.store.upsert_account(sec_uid, (body.name or "").strip() or "未命名博主")
+    await ctx.scheduler.poll_now()  # 唤醒调度循环：立即开始首轮全量拉取
+    return {"ok": True, "sec_uid": sec_uid}
+
+
+@router.delete("/api/accounts/{sec_uid}")
+async def remove_account(sec_uid: str, request: Request):
+    ok = _ctx(request).store.delete_account(sec_uid)
+    if not ok:
+        raise HTTPException(403, "仅可删除通过搜索添加的账号；配置文件来源请修改 app.yaml")
+    return {"ok": True}
+
+
 @router.get("/api/config")
 async def config_view(request: Request):
     ctx: Config = _ctx(request).cfg

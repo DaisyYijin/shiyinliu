@@ -55,6 +55,7 @@ class LoginSession:
     started_at: float = 0.0
     account: str = ""
     avatar: str = ""
+    qr_path: str = "/login_qr.png"
     shot_path: Path | None = None
     _task: Any = field(default=None, repr=False)
 
@@ -65,7 +66,7 @@ class LoginSession:
             "message": self.message,
             "account": self.account or None,
             "avatar": self.avatar or None,
-            "qr": ("/login_qr.png" if self.shot_path and self.shot_path.exists() else None),
+            "qr": (self.qr_path if self.shot_path and self.shot_path.exists() else None),
         }
 
 

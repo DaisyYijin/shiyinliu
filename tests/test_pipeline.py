@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from app.config import Config
+from app.config import Config, DouyinAccount
 from app.db import Store
 from app.pipeline import Pipeline
 
@@ -26,8 +26,8 @@ class FakeMonitor:
         self.posts = posts or []
         self.detail = detail
 
-    async def list_posts(self, sec_uid, limit):
-        return self.posts[:limit]
+    async def list_posts(self, sec_uid, limit, fetch_all=False):
+        return self.posts if fetch_all else self.posts[:limit]
 
     async def get_post(self, aweme_id):
         return self.detail
@@ -71,9 +71,9 @@ class FakeUploader:
 def make_pipeline(tmp_path, posts=None, detail=None, fail_first=0, keep_video=False):
     cfg = make_cfg(tmp_path)
     cfg.keep_video = keep_video
-    cfg.douyin.accounts.append(type("A", (), {"name": "测试号", "sec_uid": SEC_UID})())
     store = Store(cfg.db_path)
     store.set_max_attempts(cfg.max_attempts)
+    store.sync_config_accounts([DouyinAccount(name="测试号", sec_uid=SEC_UID)])
     dl, cv, up = FakeDownloader(), FakeConverter(), FakeUploader(fail_first)
     pipe = Pipeline(cfg, store, FakeMonitor(posts, detail), dl, cv, up)
     return pipe, store, dl, cv, up
@@ -86,6 +86,7 @@ async def test_poll_once_full_flow(tmp_path):
     pipe, store, dl, cv, up = make_pipeline(tmp_path, posts=posts)
     result = await pipe.poll_once()
     assert result["discovered"] == 1 and result["uploaded"] == 1
+    assert result["accounts"][0].get("first_full_fetch") is True  # 首轮全量标记
     rec = store.get(AW_ID)
     assert rec["status"] == "uploaded"
     assert rec["xima_track"] == "https://www.ximalaya.com/sound/999999"

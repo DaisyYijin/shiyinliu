@@ -11,7 +11,7 @@
   .wrap { max-width:1080px; margin:0 auto; padding:24px 16px 60px; }
   h1 { font-size:20px; margin:0 0 4px; }
   .sub { color:var(--dim); font-size:12px; margin-bottom:20px; }
-  .grid { display:grid; grid-template-columns:2fr 1fr; gap:12px; }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
   @media (max-width:820px){ .grid{grid-template-columns:1fr;} }
   .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px 16px; }
   .card h3 { margin:0 0 10px; font-size:14px; }
@@ -20,11 +20,13 @@
   .stat b { display:block; font-size:20px; }
   .stat span { color:var(--dim); font-size:12px; }
   .bar { display:flex; gap:10px; margin-bottom:16px; flex-wrap:wrap; align-items:center; }
-  button { background:var(--acc); border:0; color:#fff; padding:8px 16px; border-radius:8px; cursor:pointer; font-size:13px; }
+  button { background:var(--acc); border:0; color:#fff; padding:7px 14px; border-radius:8px; cursor:pointer; font-size:13px; }
   button:hover { filter:brightness(1.1); }
   button:disabled { opacity:.5; cursor:default; }
   button.ghost { background:transparent; border:1px solid var(--line); color:var(--fg); }
-  input[type=text] { background:#11141b; border:1px solid var(--line); color:var(--fg); border-radius:8px; padding:8px 12px; font-size:13px; flex:1; min-width:180px; }
+  button.mini { padding:3px 10px; font-size:12px; border-radius:6px; }
+  button.danger { background:transparent; border:1px solid rgba(224,86,58,.5); color:var(--bad); }
+  input[type=text] { background:#11141b; border:1px solid var(--line); color:var(--fg); border-radius:8px; padding:8px 12px; font-size:13px; flex:1; min-width:140px; }
   table { width:100%; border-collapse:collapse; background:var(--card); border:1px solid var(--line); border-radius:10px; overflow:hidden; }
   th,td { text-align:left; padding:9px 12px; border-bottom:1px solid var(--line); font-size:13px; }
   th { color:var(--dim); font-weight:500; background:#141821; white-space:nowrap; }
@@ -32,13 +34,19 @@
   .badge { display:inline-block; padding:1px 8px; border-radius:20px; font-size:12px; }
   .b-uploaded{background:rgba(63,185,111,.15);color:var(--ok);} .b-failed{background:rgba(224,86,58,.15);color:var(--bad);}
   .b-pending{background:rgba(224,162,58,.15);color:var(--warn);} .b-run{background:rgba(79,140,255,.15);color:var(--acc);}
+  .b-src{background:rgba(139,147,163,.15);color:var(--dim);}
   .err { color:var(--bad); font-size:12px; max-width:260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:inline-block; vertical-align:middle; }
   #msg { margin:0 0 12px; color:var(--dim); font-size:12px; min-height:18px; }
   a { color:var(--acc); text-decoration:none; }
   .login-row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
   .login-state { font-size:12px; color:var(--dim); }
   .login-state.ok { color:var(--ok); }
-  #qr { margin-top:10px; max-width:260px; width:100%; border:1px solid var(--line); border-radius:8px; display:none; }
+  .qr { margin-top:10px; max-width:220px; width:100%; border:1px solid var(--line); border-radius:8px; display:none; }
+  .acct-list { margin-top:10px; max-height:260px; overflow-y:auto; }
+  .acct-row { display:flex; gap:8px; align-items:center; padding:6px 0; border-bottom:1px solid var(--line); font-size:13px; }
+  .acct-row:last-child { border-bottom:0; }
+  .acct-row .nm { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .hint { color:var(--dim); font-size:12px; margin-top:8px; }
 </style>
 </head>
 <body>
@@ -49,19 +57,37 @@
   <div id="msg"></div>
   <div class="grid">
     <div class="card">
-      <h3>手动提交链接（视频 / 博主主页，支持分享短链）</h3>
+      <h3>监控博主（搜索添加 / 全量拉取）</h3>
+      <div class="bar" style="margin-bottom:8px">
+        <input type="text" id="kw" placeholder="输入博主昵称，先完成抖音扫码登录…">
+        <button id="search">搜索</button>
+      </div>
+      <div id="results" class="acct-list" style="display:none"></div>
+      <div id="acct-list" class="acct-list"></div>
+      <div class="hint">新添加的博主首轮会拉取全部作品并逐条转音频上传，之后自动增量。</div>
+    </div>
+    <div class="card">
+      <h3>手动提交链接（视频 / 主页，支持分享短链）</h3>
       <div class="bar" style="margin-bottom:0">
-        <input type="text" id="url" placeholder="粘贴抖音视频链接、分享口令或主页链接…">
+        <input type="text" id="url" placeholder="粘贴抖音视频链接或分享口令…">
         <button id="submit">提交处理</button>
       </div>
     </div>
     <div class="card">
-      <h3>喜马拉雅登录</h3>
+      <h3>抖音登录（搜索与提额用）</h3>
       <div class="login-row">
-        <button class="ghost" id="login">扫码登录</button>
-        <span class="login-state" id="login-state">未检测</span>
+        <button class="ghost" id="dy-login">扫码登录</button>
+        <span class="login-state" id="dy-state">未检测</span>
       </div>
-      <img id="qr" alt="登录二维码">
+      <img id="dy-qr" class="qr" alt="抖音登录二维码">
+    </div>
+    <div class="card">
+      <h3>喜马拉雅登录（上传用）</h3>
+      <div class="login-row">
+        <button class="ghost" id="xm-login">扫码登录</button>
+        <span class="login-state" id="xm-state">未检测</span>
+      </div>
+      <img id="xm-qr" class="qr" alt="喜马拉雅登录二维码">
     </div>
   </div>
   <div class="bar" style="margin-top:16px">
@@ -98,32 +124,85 @@ function render(data){
 }
 async function load(){ try{ render(await (await fetch("/api/records")).json()); }catch(e){ $("msg").textContent=""+e; } }
 
-async function pollLogin(){
+// ---- 通用扫码登录轮询（喜马拉雅 xm / 抖音 dy） ----
+const LOGIN_APIS = {
+  xm: {status:"/api/login/status", start:"/api/login/start", qr:"/login_qr.png"},
+  dy: {status:"/api/douyin/login/status", start:"/api/douyin/login/start", qr:"/douyin_qr.png"},
+};
+async function pollLogin(kind){
+  const api = LOGIN_APIS[kind];
   try{
-    const s = await (await fetch("/api/login/status")).json();
-    const el = $("login-state");
+    const s = await (await fetch(api.status)).json();
+    const el = $(kind+"-state"), qr = $(kind+"-qr");
     if (s.logged_in){
       const who = s.account ? `（${esc(s.account)}）` : "";
       const av = s.avatar ? `<img src="${esc(s.avatar)}" style="width:18px;height:18px;border-radius:50%;vertical-align:-4px;margin-right:4px" onerror="this.remove()">` : "";
       el.innerHTML = `${av}已登录 ✓${who}`;
       el.className = "login-state ok";
-      $("qr").style.display = "none";
-    }
-    else if (s.running){ el.textContent=s.message||"等待扫码…"; }
-    else { el.textContent="未登录"; el.className="login-state"; }
-    if (s.running && s.qr){ $("qr").src=s.qr+"?t="+Date.now(); $("qr").style.display="block"; }
-    else if (!s.logged_in) { $("qr").style.display="none"; }
+      qr.style.display = "none";
+    } else if (s.running){ el.textContent = s.message||"等待扫码…"; el.className="login-state"; }
+    else { el.textContent = "未登录"; el.className = "login-state"; }
+    if (s.running && s.qr){ qr.src = api.qr+"?t="+Date.now(); qr.style.display = "block"; }
+    else if (!s.logged_in) { qr.style.display = "none"; }
   }catch(e){}
 }
-$("login").onclick = async () => {
-  $("login").disabled = true;
-  try {
-    const r = await fetch("/api/login/start",{method:"POST"});
-    $("msg").textContent = "登录任务已发起，下方二维码出现后用喜马拉雅 App 扫码（约 5 分钟内有效）";
-    pollLogin();
-  } catch(e){ $("msg").textContent="发起失败："+e; }
-  finally { $("login").disabled = false; }
+function bindLogin(kind){
+  $(kind+"-login").onclick = async () => {
+    $(kind+"-login").disabled = true;
+    try {
+      await fetch(LOGIN_APIS[kind].start, {method:"POST"});
+      $("msg").textContent = "登录任务已发起，二维码出现后用对应 App 扫码（约 5 分钟内有效）";
+      pollLogin(kind);
+    } catch(e){ $("msg").textContent = "发起失败："+e; }
+    finally { $(kind+"-login").disabled = false; }
+  };
+}
+
+// ---- 监控账号管理 ----
+async function loadAccounts(){
+  try{
+    const r = await (await fetch("/api/accounts")).json();
+    const rows = (r.accounts||[]).map(a=>`<div class="acct-row">
+      <span class="nm" title="${esc(a.sec_uid)}">${esc(a.name)}</span>
+      <span class="badge b-src">${a.source==="config"?"配置":"搜索"}</span>
+      <span class="badge ${a.fetched_all?"b-uploaded":"b-pending"}">${a.fetched_all?"已全量":"待全量"}</span>
+      ${a.source==="search"?`<button class="mini danger" onclick="removeAcct('${a.sec_uid}')">移除</button>`:""}
+    </div>`).join("");
+    $("acct-list").innerHTML = rows || `<div class="hint">还没有监控博主：先扫码登录抖音，然后搜索添加。</div>`;
+  }catch(e){}
+}
+window.removeAcct = async sec => {
+  if (!confirm("确定移除该博主？（已处理记录保留）")) return;
+  const r = await fetch("/api/accounts/"+encodeURIComponent(sec), {method:"DELETE"});
+  $("msg").textContent = r.ok ? "已移除" : ("移除失败："+(await r.json()).detail);
+  loadAccounts();
 };
+$("search").onclick = async () => {
+  const kw = $("kw").value.trim();
+  if (!kw) return;
+  $("search").disabled = true; $("msg").textContent = "搜索中…（需已完成抖音登录）";
+  try{
+    const r = await fetch("/api/accounts/search?q="+encodeURIComponent(kw));
+    const j = await r.json().catch(()=>({detail:"未知错误"}));
+    if (!r.ok){ $("msg").textContent = "搜索失败："+JSON.stringify(j.detail||j); return; }
+    const list = j.results||[];
+    $("results").style.display = list.length ? "block" : "none";
+    $("results").innerHTML = list.map(c=>`<div class="acct-row">
+      <span class="nm">${esc(c.nickname)}</span>
+      <button class="mini" onclick='addAcct(${JSON.stringify(c.sec_uid)}, ${JSON.stringify(c.nickname)})'>添加监控</button>
+    </div>`).join("");
+    $("msg").textContent = list.length ? `找到 ${list.length} 个候选` : "没有找到候选，换个关键词试试";
+  } catch(e){ $("msg").textContent = "搜索失败："+e; }
+  finally { $("search").disabled = false; }
+};
+window.addAcct = async (sec, name) => {
+  const r = await fetch("/api/accounts", {method:"POST",headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({sec_uid: sec, name})});
+  const j = await r.json().catch(()=>({detail:"未知错误"}));
+  $("msg").textContent = r.ok ? `已添加「${name}」，即将开始全量拉取全部作品…` : ("添加失败："+JSON.stringify(j.detail||j));
+  if (r.ok){ loadAccounts(); $("results").style.display="none"; }
+};
+
 $("submit").onclick = async () => {
   const url = $("url").value.trim();
   if (!url) return;
@@ -138,14 +217,16 @@ $("submit").onclick = async () => {
 };
 $("poll").onclick = async () => {
   $("poll").disabled = true; $("msg").textContent = "轮询中，可能需要几分钟…";
-  try { const r = await (await fetch("/api/poll",{method:"POST"})).json(); $("msg").textContent = "完成：" + JSON.stringify(r); load(); }
+  try { const r = await (await fetch("/api/poll",{method:"POST"})).json(); $("msg").textContent = "完成：" + JSON.stringify(r); load(); loadAccounts(); }
   catch(e){ $("msg").textContent = "失败：" + e; }
   finally { $("poll").disabled = false; }
 };
-$("refresh").onclick = load;
-load(); pollLogin();
+$("refresh").onclick = () => { load(); loadAccounts(); };
+bindLogin("xm"); bindLogin("dy");
+load(); loadAccounts();
+pollLogin("xm"); pollLogin("dy");
 setInterval(load, 15000);
-setInterval(pollLogin, 8000);
+setInterval(()=>{ pollLogin("xm"); pollLogin("dy"); }, 8000);
 </script>
 </body>
 </html>

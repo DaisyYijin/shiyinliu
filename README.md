@@ -34,6 +34,8 @@ cp config/app.example.yaml config/app.yaml
 | `douyin.accounts[].url` | 抖音 App 打开博主主页 → 分享 → 复制链接，形如 `https://www.douyin.com/user/MS4wLjABAAAA...` |
 | `ximalaya.album_id` | 浏览器登录 [喜马拉雅创作中心](https://www.ximalaya.com/reform-upload/page/webCenter/upload) → 专辑管理，地址栏 `sound/manage/` 后面那串数字 |
 
+> 💡 也可以**完全不写配置文件里的博主**：启动后先在状态页完成「抖音扫码登录」，然后直接**搜索博主昵称一键添加**，新添加的博主会自动全量拉取所有作品并逐条转音频上传，之后转为增量监控。
+
 ### 2. 启动
 
 ```bash
@@ -80,6 +82,12 @@ ximalaya:
 | POST | `/api/submit` | 手动提交链接 `{"url": "..."}` |
 | POST | `/api/login/start` | 发起喜马拉雅扫码登录 |
 | GET | `/api/login/status` | 登录任务状态 |
+| POST | `/api/douyin/login/start` | 发起抖音扫码登录 |
+| GET | `/api/douyin/login/status` | 抖音登录状态 |
+| GET | `/api/accounts` | 监控账号列表 |
+| GET | `/api/accounts/search?q=` | 搜索抖音博主（需已登录抖音） |
+| POST | `/api/accounts` | 添加监控 `{"sec_uid": "...", "name": "..."}` |
+| DELETE | `/api/accounts/{sec_uid}` | 移除搜索添加的博主 |
 
 ## 数据目录
 

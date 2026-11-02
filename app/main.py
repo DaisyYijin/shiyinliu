@@ -37,6 +37,7 @@ class AppContext:
     pipeline: Pipeline
     scheduler: PollScheduler
     login_session: Any = None
+    douyin_login_session: Any = None
 
 
 @asynccontextmanager
@@ -47,6 +48,7 @@ async def lifespan(app: FastAPI):
 
     store = Store(cfg.db_path)
     store.set_max_attempts(cfg.max_attempts)
+    store.sync_config_accounts(cfg.douyin.accounts)
 
     pipeline = Pipeline(
         cfg=cfg,
@@ -62,7 +64,7 @@ async def lifespan(app: FastAPI):
     scheduler.start()
     app.state.ctx = AppContext(cfg=cfg, store=store, pipeline=pipeline, scheduler=scheduler)
     log.info("拾音流已启动：账号 %d 个，轮询间隔 %d 分钟",
-             len(cfg.douyin.accounts), cfg.poll_interval_minutes)
+             len(store.list_accounts()), cfg.poll_interval_minutes)
     try:
         yield
     finally:

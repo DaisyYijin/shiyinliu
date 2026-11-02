@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 SEC_UID = "MS4wLjABAAAAabcdefghij0123456789_-abc"
+SEC_UID_X = "MS4wLjABAAAAxxxxxxxxxx0123456789_-xyz"
 
 CFG_OK = f"""
 poll_interval_minutes: 15
@@ -95,7 +96,7 @@ def test_api_endpoints(tmp_path, monkeypatch):
         def __init__(self, cfg=None):
             pass
 
-        async def list_posts(self, sec_uid, limit):
+        async def list_posts(self, sec_uid, limit, fetch_all=False):
             return []
 
     monkeypatch.setattr(main_mod, "F2Monitor", OfflineMonitor)
@@ -117,3 +118,20 @@ def test_api_endpoints(tmp_path, monkeypatch):
         assert r.status_code == 200, r.text
         acct = r.json()["accounts"][0]  # OfflineMonitor：0 条作品、0 新增、无异常
         assert acct["new"] == 0 and "error" not in acct
+
+        # 监控账号管理：config 账号已在 lifespan 同步入库
+        r = client.get("/api/accounts")
+        assert r.status_code == 200
+        accts = r.json()["accounts"]
+        assert any(a["source"] == "config" for a in accts)
+
+        r = client.post("/api/accounts", json={"sec_uid": SEC_UID_X, "name": "搜索添加"})
+        assert r.status_code == 200 and r.json()["ok"] is True
+        r = client.get("/api/accounts")
+        assert any(a["name"] == "搜索添加" and a["source"] == "search"
+                   for a in r.json()["accounts"])
+
+        # config 来源不可删除
+        cfg_sec = accts[0]["sec_uid"]
+        r = client.delete(f"/api/accounts/{cfg_sec}")
+        assert r.status_code == 403

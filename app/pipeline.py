@@ -77,24 +77,33 @@ class Pipeline:
                 "accounts": [],
             }
             try:
-                # 1) 发现新作品
-                for acct in self.cfg.douyin.accounts:
+                # 1) 发现新作品（监控账号来自配置文件与状态页搜索添加，统一入 SQLite）
+                for acct in self.store.list_accounts():
+                    sec_uid, name = acct["sec_uid"], acct["name"]
+                    first_full = not acct["fetched_all"]
                     try:
                         posts = await self.monitor.list_posts(
-                            acct.sec_uid, self.cfg.douyin.max_posts_per_poll
+                            sec_uid,
+                            self.cfg.douyin.max_posts_per_poll,
+                            fetch_all=first_full,
                         )
                         n_new = 0
                         for p in posts:
-                            if self.store.upsert_discovered({**p, "account": acct.name}):
+                            if self.store.upsert_discovered({**p, "account": name}):
                                 n_new += 1
+                        if first_full:
+                            self.store.set_fetched_all(sec_uid)
                         result["discovered"] += n_new
-                        result["accounts"].append(
-                            {"name": acct.name, "posts": len(posts), "new": n_new}
-                        )
+                        entry: dict[str, Any] = {
+                            "name": name, "posts": len(posts), "new": n_new,
+                        }
+                        if first_full:
+                            entry["first_full_fetch"] = True
+                        result["accounts"].append(entry)
                     except Exception as e:  # 单账号失败不影响其他账号
-                        log.exception("账号 %s 拉取失败", acct.name)
+                        log.exception("账号 %s 拉取失败", name)
                         result["accounts"].append(
-                            {"name": acct.name, "error": str(e)[:300]}
+                            {"name": name, "error": str(e)[:300]}
                         )
                 # 2) 处理积压
                 proc = await self.process_pending()
