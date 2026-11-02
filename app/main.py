@@ -56,7 +56,9 @@ async def lifespan(app: FastAPI):
         converter=FFmpegConverter(cfg),
         uploader=PlaywrightUploader(cfg),
     )
-    scheduler = PollScheduler(pipeline, cfg.poll_interval_minutes, poll_on_start=True)
+    scheduler = PollScheduler(
+        pipeline, cfg.poll_interval_minutes, poll_on_start=cfg.poll_on_start
+    )
     scheduler.start()
     app.state.ctx = AppContext(cfg=cfg, store=store, pipeline=pipeline, scheduler=scheduler)
     log.info("拾音流已启动：账号 %d 个，轮询间隔 %d 分钟",

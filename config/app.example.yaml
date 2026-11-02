@@ -4,6 +4,9 @@
 # 轮询间隔（分钟），默认 30
 poll_interval_minutes: 30
 
+# 启动后是否立即轮询一次（false 则等满一个间隔再开始）
+poll_on_start: true
+
 # 单条视频处理失败的最大重试次数
 max_attempts: 3
 

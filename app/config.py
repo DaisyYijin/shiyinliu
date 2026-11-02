@@ -47,6 +47,7 @@ class XimalayaConfig:
 class Config:
     port: int = 8300
     poll_interval_minutes: int = 30
+    poll_on_start: bool = True
     max_attempts: int = 3
     keep_video: bool = False
     douyin: DouyinConfig = field(default_factory=DouyinConfig)
@@ -108,6 +109,7 @@ def load_config(path: Path | str | None = None) -> Config:
     cfg = Config(
         port=int(os.environ.get("PORT", raw.get("port", 8300))),
         poll_interval_minutes=int(raw.get("poll_interval_minutes", 30)),
+        poll_on_start=bool(raw.get("poll_on_start", True)),
         max_attempts=int(raw.get("max_attempts", 3)),
         keep_video=bool(raw.get("keep_video", False)),
         douyin=DouyinConfig(

@@ -8,6 +8,7 @@ SEC_UID = "MS4wLjABAAAAabcdefghij0123456789_-abc"
 
 CFG_OK = f"""
 poll_interval_minutes: 15
+poll_on_start: false
 douyin:
   accounts:
     - name: 测试博主
@@ -88,6 +89,17 @@ def test_api_endpoints(tmp_path, monkeypatch):
     monkeypatch.setenv("SY_DATA_DIR", str(tmp_path / "data"))
     monkeypatch.setenv("SY_MEDIA_DIR", str(tmp_path / "media"))
 
+    import app.main as main_mod
+
+    class OfflineMonitor:  # 测试不触外网：返回空作品列表
+        def __init__(self, cfg=None):
+            pass
+
+        async def list_posts(self, sec_uid, limit):
+            return []
+
+    monkeypatch.setattr(main_mod, "F2Monitor", OfflineMonitor)
+
     from app.main import app
 
     with TestClient(app) as client:
@@ -102,6 +114,6 @@ def test_api_endpoints(tmp_path, monkeypatch):
         assert r.json()["ximalaya"]["album_id"] == "123456"
 
         r = client.post("/api/poll")
-        assert r.status_code == 200
-        # 骨架阶段 monitor 未实现：错误应被账号级捕获，而不是 500
-        assert r.json()["accounts"] and "error" in r.json()["accounts"][0]
+        assert r.status_code == 200, r.text
+        acct = r.json()["accounts"][0]  # OfflineMonitor：0 条作品、0 新增、无异常
+        assert acct["new"] == 0 and "error" not in acct
