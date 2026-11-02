@@ -60,6 +60,42 @@ async def submit(body: SubmitBody, request: Request):
         raise HTTPException(400, f"提交失败：{e}")
 
 
+# ---- 登录状态（会话任务优先，其次读登录标记文件恢复显示） ----
+def _auth_from_file(request: Request, filename: str) -> dict | None:
+    import json
+    from pathlib import Path
+
+    p = Path(_ctx(request).cfg.data_dir) / filename
+    if not p.exists():
+        return None
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+
+def _logged_in_from_auth(auth: dict | None) -> dict:
+    if auth:
+        return {
+            "running": False,
+            "logged_in": True,
+            "message": "已登录（沿用重启前登录态）",
+            "account": auth.get("account") or None,
+            "avatar": auth.get("avatar") or None,
+            "qr": None,
+        }
+    return {"running": False, "logged_in": False, "message": "",
+            "account": None, "avatar": None, "qr": None}
+
+
+@router.get("/api/login/status")
+async def login_status(request: Request):
+    sess = getattr(_ctx(request), "login_session", None)
+    if sess and (sess.running or sess.logged_in):
+        return sess.status()
+    return _logged_in_from_auth(_auth_from_file(request, "ximalaya_auth.json"))
+
+
 @router.post("/api/login/start")
 async def login_start(request: Request):
     ctx = _ctx(request)
@@ -70,14 +106,6 @@ async def login_start(request: Request):
 
     ctx.login_session = start_login_task(ctx.cfg)
     return ctx.login_session.status()
-
-
-@router.get("/api/login/status")
-async def login_status(request: Request):
-    sess = getattr(_ctx(request), "login_session", None)
-    if sess:
-        return sess.status()
-    return {"running": False, "logged_in": False, "message": "", "qr": None}
 
 
 @router.get("/login_qr.png")
@@ -93,10 +121,9 @@ async def login_qr(request: Request):
 @router.get("/api/douyin/login/status")
 async def douyin_login_status(request: Request):
     sess = getattr(_ctx(request), "douyin_login_session", None)
-    if sess:
+    if sess and (sess.running or sess.logged_in):
         return sess.status()
-    return {"running": False, "logged_in": False, "message": "",
-            "account": None, "avatar": None, "qr": None}
+    return _logged_in_from_auth(_auth_from_file(request, "douyin_auth.json"))
 
 
 @router.post("/api/douyin/login/start")

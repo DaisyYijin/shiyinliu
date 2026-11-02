@@ -1,4 +1,5 @@
 """骨架测试：config 解析 / db 状态机 / FastAPI 端点（本地无 fastapi 时跳过 API 部分）。"""
+import os
 import tempfile
 from pathlib import Path
 
@@ -135,3 +136,18 @@ def test_api_endpoints(tmp_path, monkeypatch):
         cfg_sec = accts[0]["sec_uid"]
         r = client.delete(f"/api/accounts/{cfg_sec}")
         assert r.status_code == 403
+
+        # 重启后登录态恢复：无会话任务时读 auth 标记文件
+        import json as _json
+
+        data_dir = Path(os.environ["SY_DATA_DIR"])
+        (data_dir / "ximalaya_auth.json").write_text(
+            _json.dumps({"account": "喜马拉雅用户", "avatar": "", "at": 1}),
+            encoding="utf-8")
+        (data_dir / "douyin_auth.json").write_text(
+            _json.dumps({"account": "抖音用户", "avatar": "", "at": 1}),
+            encoding="utf-8")
+        r = client.get("/api/login/status")
+        assert r.json()["logged_in"] is True and r.json()["account"] == "喜马拉雅用户"
+        r = client.get("/api/douyin/login/status")
+        assert r.json()["logged_in"] is True and r.json()["account"] == "抖音用户"

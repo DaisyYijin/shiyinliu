@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import time
 from dataclasses import dataclass, field
@@ -19,6 +20,22 @@ log = logging.getLogger("ximalaya.login")
 
 REFRESH_SECONDS = 6
 DEFAULT_TIMEOUT = 300
+
+AUTH_FILE = "ximalaya_auth.json"
+
+
+def write_auth(cfg: Config, account: str, avatar: str) -> None:
+    """登录成功后落标记文件：重启后状态页据此恢复「已登录」显示。"""
+    try:
+        p = Path(cfg.data_dir) / AUTH_FILE
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(
+            json.dumps({"account": account, "avatar": avatar, "at": int(time.time())},
+                       ensure_ascii=False),
+            encoding="utf-8",
+        )
+    except Exception:
+        log.warning("写入登录标记失败", exc_info=True)
 
 QR_SELECTORS = [
     "img[class*='qr']",
@@ -70,18 +87,29 @@ class LoginSession:
         }
 
 
-async def _shot_qr_only(page: Any, shot: Path) -> None:
-    """优先只截二维码元素（主页面 + iframe 逐帧多候选尝试），失败回退整页。"""
+async def _shot_qr_only(page: Any, shot: Path) -> bool:
+    """优先只截二维码元素（主页面 + iframe 逐帧多候选尝试）。
+
+    候选元素需通过尺寸校验（≥80px 且宽高比接近方形），避免把无关的
+    小 canvas / 小图标当成二维码；全部不满足时回退整页截图并返回 False。
+    """
     for frame in page.frames:
         for sel in QR_SELECTORS:
             try:
                 loc = frame.locator(sel).first
                 if await loc.is_visible():
+                    box = await loc.bounding_box()
+                    if not box or box["width"] < 80 or box["height"] < 80:
+                        continue
+                    ratio = box["width"] / max(box["height"], 1)
+                    if not 0.5 <= ratio <= 2.0:
+                        continue
                     await loc.screenshot(path=str(shot))
-                    return
+                    return True
             except Exception:
                 continue
-    await _shot(page, shot)  # 回退：整页截图
+    await _shot(page, shot)
+    return False
 
 
 async def _read_account(page: Any) -> tuple[str, str]:
@@ -144,6 +172,9 @@ async def run_login(cfg: Config, session: LoginSession) -> None:
                         session.message = f"登录成功：{name}" if name else "登录成功"
                     except Exception:
                         log.debug("读取账号信息失败", exc_info=True)
+                        name = getattr(session, "account", "")
+                        avatar = getattr(session, "avatar", "")
+                    write_auth(cfg, name or "", avatar or "")
                     return
                 session.message = "等待扫码（二维码见状态页）"
                 await _shot_qr_only(page, shot)
