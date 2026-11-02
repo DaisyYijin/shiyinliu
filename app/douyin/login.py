@@ -112,11 +112,10 @@ async def run_douyin_login(cfg: Config, session: LoginSession) -> None:
                 timezone_id="Asia/Shanghai",
             )
             page = await ctx.new_page()
-            clicked_login = False
-            round_no = 0
             deadline = time.monotonic() + DEFAULT_TIMEOUT
+            need_goto = True
+            last_goto = 0.0
             while time.monotonic() < deadline:
-                round_no += 1
                 cookies = await ctx.cookies()
                 if _has_session(cookies):
                     try:  # 导出 cookie 供 f2 通道使用
@@ -138,18 +137,21 @@ async def run_douyin_login(cfg: Config, session: LoginSession) -> None:
                     write_douyin_auth(cfg, name or "", avatar or "")
                     return
 
-                # 每轮重新载入页面：首次访问种下游客 cookie，
-                # 第二轮起未登录会自动弹出登录面板（真实行为已核实）
-                try:
-                    await page.goto(DOUYIN_HOME_URL, wait_until="domcontentloaded",
-                                    timeout=60000)
-                except Exception as e:
-                    session.message = f"页面加载异常，重试中：{e}"
-                    await asyncio.sleep(REFRESH_SECONDS)
-                    continue
-                await page.wait_for_timeout(3000)
-
-                session.message = "等待扫码（二维码见状态页）"
+                # 按需（重）加载页面：仅当从未加载、验证超时或页面完全无进展。
+                # 关键：二维码存在期间绝不重载——扫码确认后页面会自然切换到
+                # 验证表单或登录成功，盲目重载会把这一步刷掉（表现为永远
+                # 停留在"等待扫码"）。
+                if need_goto:
+                    try:
+                        await page.goto(DOUYIN_HOME_URL, wait_until="domcontentloaded",
+                                        timeout=60000)
+                        await page.wait_for_timeout(3000)
+                    except Exception as e:
+                        session.message = f"页面加载异常，重试中：{e}"
+                        await asyncio.sleep(REFRESH_SECONDS)
+                        continue
+                    last_goto = time.monotonic()
+                    need_goto = False
 
                 # 扫码确认后可能出现二次验证（短信验证码/手机尾号）：
                 # 展示验证页并等待用户在状态页输入，代填提交
@@ -166,28 +168,39 @@ async def run_douyin_login(cfg: Config, session: LoginSession) -> None:
                         )
                         await page.wait_for_timeout(3000)
                     else:
-                        session.message = "验证输入超时，请重新扫码"
+                        session.message = "验证输入超时，正在刷新二维码，请重新扫码"
+                        need_goto = True
                     continue  # 回到循环顶查 cookie
 
-                # 二维码提取：base64 直取 -> （兜底）点登录入口 -> 元素截图
-                if not await _extract_qr_base64(page, shot):
-                    # 每轮都尝试点一次登录入口（面板未弹时；已弹时点击
-                    # 被面板拦截而超时，捕获后无副作用）
-                    await _try_open_login_dialog(page)
-                    await page.wait_for_timeout(2500)
-                    ok = await _extract_qr_base64(page, shot)
-                    if not ok:
-                        ok = await _shot_qr_only(page, shot)
-                    if not ok and round_no <= 3:
-                        await _shot(
-                            page,
-                            Path(cfg.debug_dir)
-                            / f"douyin_login_page_{int(time.time())}.png",
-                        )
-                        session.message = (
-                            "未找到二维码元素，已留档页面截图（data/debug/）"
-                        )
-                await asyncio.sleep(REFRESH_SECONDS)
+                # 二维码在：保持页面不动，轻轮询等它自然演进
+                # （扫码确认 -> 验证表单 / 登录成功跳转）
+                if await _extract_qr_base64(page, shot):
+                    session.message = "等待扫码（二维码见状态页）"
+                    await asyncio.sleep(4)
+                    continue
+
+                # 既无验证表单也无二维码：尝试点开登录面板
+                await _try_open_login_dialog(page)
+                await page.wait_for_timeout(2500)
+                if await _extract_qr_base64(page, shot):
+                    session.message = "等待扫码（二维码见状态页）"
+                    continue
+                if await _shot_qr_only(page, shot):
+                    session.message = "等待扫码（二维码见状态页）"
+                    await asyncio.sleep(4)
+                    continue
+
+                # 完全无进展：留档整页并重载
+                if time.monotonic() - last_goto > 20:
+                    await _shot(
+                        page,
+                        Path(cfg.debug_dir)
+                        / f"douyin_login_page_{int(time.time())}.png",
+                    )
+                    session.message = "页面无进展，正在重新加载…"
+                    need_goto = True
+                else:
+                    await asyncio.sleep(3)
             session.message = "超时未登录，请重新发起"
     except Exception as e:
         session.message = f"登录辅助异常：{e}"
@@ -261,7 +274,7 @@ async def _fill_and_submit_verify(page: Any, loc: Any, value: str) -> bool:
             try:
                 btn = page.locator(sel).first
                 if await btn.is_visible():
-                    await btn.click()
+                    await btn.click(timeout=5000)
                     return True
             except Exception:
                 continue
@@ -272,12 +285,15 @@ async def _fill_and_submit_verify(page: Any, loc: Any, value: str) -> bool:
 
 
 async def _try_open_login_dialog(page: Any) -> bool:
-    """点击页面上的登录入口，打开登录弹窗；成功返回 True。"""
+    """点击页面上的登录入口，打开登录弹窗；成功返回 True。
+
+    面板已打开时点击会被面板拦截而超时，属预期（短超时，不拖慢循环）。
+    """
     for sel in LOGIN_BUTTON_SELECTORS:
         try:
             loc = page.locator(sel).first
             if await loc.is_visible():
-                await loc.click()
+                await loc.click(timeout=5000)
                 await page.wait_for_timeout(2500)
                 await _try_click_qr_tab(page)
                 return True
